@@ -26,6 +26,30 @@ const uploadImageToAzure = async (file: Express.Multer.File): Promise<string> =>
   return blockBlobClient.url;
 };
 
+const checkIfBlobExists = async (imageURL: string): Promise<boolean> => {
+  const url = new URL(imageURL);
+  const blobName = url.pathname.split('/').pop();
+
+  if (!blobName) {
+    return false;
+  }
+
+  const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+  const blobExists = await blockBlobClient.exists();
+
+  return blobExists;
+}
+
+async function deleteAzureBlob(imageURL: string) {
+  const url = new URL(imageURL);
+  const blobName = url.pathname.split('/').pop();
+
+  if (blobName) {
+    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    await blockBlobClient.delete();
+  }
+}
+
 router.post('/aluno', upload.single('LINK_IMAGE'), alunoMiddleware, async (req: Request, res: Response) => {
   try {
     const { NOME, EMAIL, IDADE } = req.body;
@@ -56,7 +80,7 @@ router.post('/aluno', upload.single('LINK_IMAGE'), alunoMiddleware, async (req: 
 router.get('/aluno', async (req: Request, res: Response) => {
   try {
     const alunos = await alunoRepository.find();
-    res.json(alunos);
+    res.status(200).json(alunos);
   } catch (error) {
     console.error("Erro ao buscar alunos:", error);
     res.status(500).send("Erro ao buscar alunos");
@@ -73,7 +97,7 @@ router.get('/aluno/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    res.json(aluno);
+    res.status(200).json(aluno);
   } catch (error) {
     console.error("Erro ao buscar aluno:", error);
     res.status(500).send("Erro ao buscar aluno");
@@ -82,13 +106,19 @@ router.get('/aluno/:id', async (req: Request, res: Response) => {
 
 router.put('/aluno/:id', upload.single('LINK_IMAGE'), alunoMiddleware, async (req: Request, res: Response) => {
   try {
-    const { NOME, EMAIL, IDADE } = req.body;
+    let { NOME, EMAIL, IDADE, LINK_IMAGE } = req.body;
     const alunoId = req.params.id;
     const file = req.file;
 
     if (!file) {
-      res.status(400).send("Imagem não enviada");
-      return;
+      if (!checkIfBlobExists(LINK_IMAGE)) {
+        res.status(400).send("Imagem não enviada");
+        return;
+      }
+    }
+    else {
+      const imageUrl = await uploadImageToAzure(file);
+      LINK_IMAGE = imageUrl;
     }
 
     const alunoToUpdate = await alunoRepository.findOne({ where: { ID: parseInt(alunoId) } });
@@ -97,11 +127,15 @@ router.put('/aluno/:id', upload.single('LINK_IMAGE'), alunoMiddleware, async (re
       return;
     }
 
+    if (alunoToUpdate.LINK_IMAGE !== LINK_IMAGE) {
+      await deleteAzureBlob(alunoToUpdate.LINK_IMAGE);
+    }
+
     const aluno = new Aluno();
     aluno.NOME = NOME;
     aluno.EMAIL = EMAIL;
     aluno.IDADE = IDADE;
-    aluno.LINK_IMAGE = await uploadImageToAzure(file);
+    aluno.LINK_IMAGE = LINK_IMAGE;
 
     alunoRepository.merge(alunoToUpdate, aluno);
     const resultado = await alunoRepository.save(alunoToUpdate);
@@ -122,14 +156,7 @@ router.delete('/aluno/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    const imageUrl = alunoToDelete.LINK_IMAGE;
-    const url = new URL(imageUrl);
-    const blobName = url.pathname.split('/').pop();
-
-    if (blobName) {
-      const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-      await blockBlobClient.delete();
-    }
+    await deleteAzureBlob(alunoToDelete.LINK_IMAGE);
 
     await alunoRepository.remove(alunoToDelete);
     res.status(204).send();

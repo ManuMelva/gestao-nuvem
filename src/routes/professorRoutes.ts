@@ -81,7 +81,7 @@ router.post('/professor', upload.single('LINK_IMAGE'), professorMiddleware, asyn
 router.get('/professor', async (req: Request, res: Response) => {
   try {
     const professores = await professorRepository.find();
-    res.json(professores);
+    res.status(200).json(professores);
   } catch (error) {
     console.error("Erro ao buscar professores:", error);
     res.status(500).send("Erro ao buscar professores");
@@ -96,7 +96,7 @@ router.get('/professor/:id', async (req: Request, res: Response) => {
       res.status(404).send("Professor não encontrado");
       return;
     }
-    res.json(professor);
+    res.status(200).json(professor);
   } catch (error) {
     console.error("Erro ao buscar professor:", error);
     res.status(500).send("Erro ao buscar professor");
