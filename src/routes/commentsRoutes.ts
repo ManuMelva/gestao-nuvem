@@ -39,7 +39,7 @@ router.get('/comments/:id_aluno', async (req: Request, res: Response) => {
   try {
     const alunoId = req.params.id_aluno;
 
-    const comentario = await commentsRepository.findOne({ where: { id_aluno: parseInt(alunoId) } });
+    const comentario = await commentsRepository.find({ where: { id_aluno: parseInt(alunoId) } });
     if (!comentario) {
       res.status(404).send("Comentários não encontrados para o aluno especificado");
       return;
